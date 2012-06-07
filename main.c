@@ -26,22 +26,24 @@ struct sniff_ip {
 struct sniff_tcp {
 	u_short th_sport;
 	u_short th_dport;
-	tcp_seq th_seq;
-	tcp_seq th_ack;
+	u_int32_t th_seq,th_ack;
 
 	u_char th_offx2;
 #define TH_OFF(th) (((th)->th_offx2 & 0xf0) >> 4)
 	u_char th_flags;
+#define TH_PUSH 0x08
 	u_short th_win;
 	u_short th_sum;
 	u_short th_urp;
 };
+void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport) {
+	printf("%u %u\n",sport,dport);
+}
 void handle_packet(u_char *args,const struct pcap_pkthdr *header,const u_char *packet) {
-	printf("got a packet of len %d\n",header->len);
 	const struct sniff_ethernet *ether = (struct sniff_ethernet*)packet;
 	const struct sniff_ip *ip;
 	const struct sniff_tcp *tcp;
-	const char *payload;
+	const u_char *payload;
 	u_int size_ip,size_tcp;
 
  	ip = (struct sniff_ip*) (packet+SIZE_ETHERNET);
@@ -52,6 +54,14 @@ void handle_packet(u_char *args,const struct pcap_pkthdr *header,const u_char *p
 	}
 	tcp = (struct sniff_tcp*) (packet+SIZE_ETHERNET+size_ip);
 	size_tcp = TH_OFF(tcp)*4;
+	if (size_tcp < 20) {
+		printf("invalid tcp header size %u\n",size_tcp);
+		return;
+	}
+	payload = (u_char *)(packet+SIZE_ETHERNET+size_ip+size_tcp);
+	if ((tcp->th_flags & TH_PUSH) == 0) return;
+	u_int size_payload = header->len - (SIZE_ETHERNET+size_ip+size_tcp);
+	handle_payload(payload,size_payload,ntohs(tcp->th_sport),ntohs(tcp->th_dport));
 }
 int main(int argc,char*argv[]) {
 	char *dev = "lan0";
@@ -72,7 +82,7 @@ int main(int argc,char*argv[]) {
 		fprintf(stderr,"couldnt install filter %s\n",pcap_geterr(handle));
 		return 2;
 	}
-	pcap_loop(handle,10,handle_packet,NULL);
+	pcap_loop(handle,30,handle_packet,NULL);
 	pcap_close(handle);
 	return 0;
 }
