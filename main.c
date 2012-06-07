@@ -74,7 +74,7 @@ int main(int argc,char*argv[]) {
 		printf("error 1: %s\n",errbuf);
 		return 2;
 	}
-	if (pcap_compile(handle,&fp,"port 80",0,0) == -1) {
+	if (pcap_compile(handle,&fp,"port 1119",0,0) == -1) {
 		fprintf(stderr,"couldnt parse filter %s\n",pcap_geterr(handle));
 		return 2;
 	}
