@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <pcap.h>
 #include <sys/socket.h>
@@ -36,10 +37,53 @@ struct sniff_tcp {
 	u_short th_sum;
 	u_short th_urp;
 };
-void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport) {
-	printf("%u %u\n",sport,dport);
+struct my_env {
+	int socket;
+	pcap_t *cap;
+};
+struct my_packet {
+	int sport,dport;
+	int size;
+};
+void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport,struct my_env *env) {
+	if (dport == 1119) return;
+	struct my_packet packet;
+	packet.sport = sport;
+	packet.dport = dport;
+	packet.size = size;
+	if (write(env->socket,&packet,sizeof(packet)) != sizeof(packet)) {
+		printf("write 1 failed\n");
+		pcap_close(env->cap);
+	}
+	if (write(env->socket,payload,size) != size) {
+		printf("write 2 failed\n");
+		pcap_close(env->cap);
+	}
+	printf("%u %u %u\n",sport,dport,size);
+	u_char *x,*z,*i;
+	unsigned int y = 1;
+	z = payload;
+	for (x = payload; x < (payload+size);x++,y++) {
+		//printf("\n%x %x %x %d\n",x,z,i,y);
+		printf("%02x ",*x);
+		if (y < 5) {
+			continue;
+		}
+		if ((y % 16) == 0) {
+			for (i = z; i <=x; i++) {
+				u_char t = *i;
+				if (t < 0x20) printf("_");
+				else if (t > 0x80) printf("_");
+				else printf("%c",t);
+			}
+			z = x;
+			printf("\n");
+		}
+		else if (y % 8 == 0) printf(" ");
+	}
+	printf("\n");
 }
-void handle_packet(u_char *args,const struct pcap_pkthdr *header,const u_char *packet) {
+void handle_packet(struct my_env *env,const struct pcap_pkthdr *header,const u_char *packet) {
 	const struct sniff_ethernet *ether = (struct sniff_ethernet*)packet;
 	const struct sniff_ip *ip;
 	const struct sniff_tcp *tcp;
@@ -61,15 +105,18 @@ void handle_packet(u_char *args,const struct pcap_pkthdr *header,const u_char *p
 	payload = (u_char *)(packet+SIZE_ETHERNET+size_ip+size_tcp);
 	if ((tcp->th_flags & TH_PUSH) == 0) return;
 	u_int size_payload = header->len - (SIZE_ETHERNET+size_ip+size_tcp);
-	handle_payload(payload,size_payload,ntohs(tcp->th_sport),ntohs(tcp->th_dport));
+	handle_payload(payload,size_payload,ntohs(tcp->th_sport),ntohs(tcp->th_dport),env);
 }
-int main(int argc,char*argv[]) {
+int my_main(int sock) {
 	char *dev = "lan0";
 	char *errbuf[PCAP_ERRBUF_SIZE];
 	struct bpf_program fp;
+	struct my_env env;
+	env.socket = sock;
 
 	pcap_t *handle;
 	handle = pcap_open_live(dev,2000,0,0,errbuf);
+	env.cap = handle;
 	if (handle == NULL) {
 		printf("error 1: %s\n",errbuf);
 		return 2;
@@ -82,7 +129,32 @@ int main(int argc,char*argv[]) {
 		fprintf(stderr,"couldnt install filter %s\n",pcap_geterr(handle));
 		return 2;
 	}
-	pcap_loop(handle,30,handle_packet,NULL);
+	pcap_loop(handle,-1,handle_packet,&env);
 	pcap_close(handle);
+}
+int main(int argc,char*argv[]) {
+	struct sockaddr_in serv_addr,cli_addr;
+	int sockfd,newsockfd;
+	sockfd = socket(AF_INET,SOCK_STREAM,0);
+	if (sockfd < 0) {
+		printf("error making socket\n");
+		return 3;
+	}
+	bzero((char*)&serv_addr,sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
+	serv_addr.sin_port = htons(20087);
+	if (bind(sockfd,(struct sockaddr*)&serv_addr,sizeof(serv_addr)) < 0) {
+		printf("error binding\n");
+		return 3;
+	}
+	listen(sockfd,5);
+	printf("waiting\n");
+	socklen_t size = sizeof(cli_addr);
+	while (newsockfd = accept(sockfd,(struct sockaddr*)&cli_addr,&size)) {
+		printf("starting %d %d\n",newsockfd,errno);
+		int ret = my_main(newsockfd);
+		if (ret != 0) return ret;
+	}
 	return 0;
 }
