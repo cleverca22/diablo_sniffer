@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
+#include "headers.h"
 
 #define ETHER_ADDR_LEN 6
 struct sniff_ethernet {
@@ -40,10 +41,6 @@ struct sniff_tcp {
 struct my_env {
 	int socket;
 	pcap_t *cap;
-};
-struct my_packet {
-	int sport,dport;
-	int size;
 };
 void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport,struct my_env *env) {
 	if (dport == 1119) return;
