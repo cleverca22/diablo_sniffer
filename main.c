@@ -43,7 +43,7 @@ struct my_env {
 	pcap_t *cap;
 };
 void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport,struct my_env *env) {
-	if (dport == 1119) return;
+	//if (sport == 1119) return;
 	struct my_packet packet;
 	packet.sport = sport;
 	packet.dport = dport;
@@ -73,7 +73,7 @@ void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport
 				else if (t > 0x80) printf("_");
 				else printf("%c",t);
 			}
-			z = x;
+			z = x+1;
 			printf("\n");
 		}
 		else if (y % 8 == 0) printf(" ");
@@ -100,9 +100,10 @@ void handle_packet(struct my_env *env,const struct pcap_pkthdr *header,const u_c
 		return;
 	}
 	payload = (u_char *)(packet+SIZE_ETHERNET+size_ip+size_tcp);
-	if ((tcp->th_flags & TH_PUSH) == 0) return;
-	u_int size_payload = header->len - (SIZE_ETHERNET+size_ip+size_tcp);
-	handle_payload(payload,size_payload,ntohs(tcp->th_sport),ntohs(tcp->th_dport),env);
+	if ((tcp->th_flags & TH_PUSH)) {
+		u_int size_payload = header->len - (SIZE_ETHERNET+size_ip+size_tcp);
+		handle_payload(payload,size_payload,ntohs(tcp->th_sport),ntohs(tcp->th_dport),env);
+	}
 }
 int my_main(int sock) {
 	char *dev = "lan0";
