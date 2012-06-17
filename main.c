@@ -34,6 +34,7 @@ struct sniff_tcp {
 #define TH_OFF(th) (((th)->th_offx2 & 0xf0) >> 4)
 	u_char th_flags;
 #define TH_PUSH 0x08
+#define TH_SYN 0x02
 	u_short th_win;
 	u_short th_sum;
 	u_short th_urp;
@@ -42,12 +43,26 @@ struct my_env {
 	int socket;
 	pcap_t *cap;
 };
+void handle_syn(u_short sport,u_short dport,struct my_env *env) {
+	struct my_packet packet;
+	packet.sport = sport;
+	packet.dport = dport;
+	packet.size = 0;
+	packet.push = 0;
+	packet.syn = 1;
+	if (write(env->socket,&packet,sizeof(packet)) != sizeof(packet)) {
+		printf("write 1 failed\n");
+		pcap_close(env->cap);
+	}
+}
 void handle_payload(const u_char *payload,u_int size,u_short sport,u_short dport,struct my_env *env) {
 	//if (sport == 1119) return;
 	struct my_packet packet;
 	packet.sport = sport;
 	packet.dport = dport;
 	packet.size = size;
+	packet.push = 1;
+	packet.syn = 0;
 	if (write(env->socket,&packet,sizeof(packet)) != sizeof(packet)) {
 		printf("write 1 failed\n");
 		pcap_close(env->cap);
@@ -100,7 +115,9 @@ void handle_packet(struct my_env *env,const struct pcap_pkthdr *header,const u_c
 		return;
 	}
 	payload = (u_char *)(packet+SIZE_ETHERNET+size_ip+size_tcp);
-	if ((tcp->th_flags & TH_PUSH)) {
+	if ((tcp->th_flags & TH_SYN)) {
+		handle_syn(ntohs(tcp->th_sport),ntohs(tcp->th_dport),env);
+	} else if ((tcp->th_flags & TH_PUSH)) {
 		u_int size_payload = header->len - (SIZE_ETHERNET+size_ip+size_tcp);
 		handle_payload(payload,size_payload,ntohs(tcp->th_sport),ntohs(tcp->th_dport),env);
 	}
