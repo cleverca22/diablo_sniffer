@@ -1,0 +1,5 @@
+the goal of this project is purely passive monitoring of the game, to provide things like
+* avg AH price for goods/items
+* combat log (dps, why do i keep dying)
+* measuring drop rates/gold drop rates (gold/h, magic items/h)
+* combining above drop rates with AH price to get gold/h in drops
